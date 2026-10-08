@@ -2864,11 +2864,19 @@ static void pointer_input(double x, double y, int relative, uint32_t button, int
             if (button && !pressed) g_grab = NULL;
         }
     }
+    if (button)
+        droiddeck_log("pointer", "diag button 0x%x %s at %.0f,%.0f: target %s, lock %d, desktop %d",
+                      button, pressed ? "press" : "release", g_ptr_x, g_ptr_y,
+                      target ? client_name(wl_resource_get_client(target->resource)) : "(none)",
+                      k && k->is_lock, target && target == g_desktop);
     if (!target) return;
 
     struct wl_client *client = wl_resource_get_client(target->resource);
     struct seat_pointer *sp;
-    if (!pointer_for(client)) return;
+    if (!pointer_for(client)) {
+        if (button) droiddeck_log("pointer", "diag button 0x%x dropped: %s has no wl_pointer", button, client_name(client));
+        return;
+    }
     int tx = 0, ty = 0;
     if (target != g_desktop && target->placed) { tx = target->x; ty = target->y; }
     wl_fixed_t fx = wl_fixed_from_double(g_ptr_x - tx), fy = wl_fixed_from_double(g_ptr_y - ty);

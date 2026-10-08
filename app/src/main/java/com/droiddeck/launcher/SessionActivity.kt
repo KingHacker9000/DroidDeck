@@ -1403,7 +1403,9 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) {
             drawerControllerActive = false
         }
-        return super.dispatchTouchEvent(event)
+        val handled = super.dispatchTouchEvent(event)
+        diagTouch("dispatch", event, "handled=$handled")
+        return handled
     }
 
     private fun dispatchDrawerDirection(event: MotionEvent) {
@@ -1481,6 +1483,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val pointerListener = object : PointerGestures.Listener {
         override fun onMove(x: Float, y: Float) = movePointer(x, y)
         override fun onButton(button: Int, pressed: Boolean, x: Float, y: Float) {
+            Log.i(TAG, "diag button: 0x${Integer.toHexString(button)} ${if (pressed) "press" else "release"} at ${x.toInt()},${y.toInt()}")
             movePointer(x, y)
             WaylandCompositor.nativeSendSceneInput(3, button, if (pressed) 1 else 0)
         }
@@ -1686,6 +1689,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        diagTouch("onTouch", event, "mode=$touchMode touchpad=${usingTouchpad()}")
         if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) return onMouse(event)
         // Child views get the event first, so menus, keyboards and the on-screen pad still work.
         if (touchMode == SessionPrefs.TOUCH_OFF) return true
@@ -1725,6 +1729,13 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             else -> return false
         }
         return true
+    }
+
+    /** Diagnostics for #318 testing: every touch action but moves, at the activity's entry and handler. */
+    private fun diagTouch(stage: String, event: MotionEvent, extra: String) {
+        if (event.actionMasked == MotionEvent.ACTION_MOVE) return
+        val ids = (0 until event.pointerCount).joinToString(",") { "${event.getPointerId(it)}:${event.getToolType(it)}" }
+        Log.i(TAG, "diag $stage: ${MotionEvent.actionToString(event.action)} pointers=[$ids] source=0x${Integer.toHexString(event.source)} t=${event.eventTime} $extra")
     }
 
     /** A mouse: hover moves, buttons press, the wheel scrolls. Android sends buttons as touch
