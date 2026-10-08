@@ -54,6 +54,7 @@ import com.droiddeck.launcher.input.PointerGestures
 import com.droiddeck.launcher.input.SecondScreenDisplay
 import com.droiddeck.launcher.input.SecondScreenDisplays
 import com.droiddeck.launcher.input.SecondScreenMode
+import com.droiddeck.launcher.input.StylusInput
 import com.droiddeck.launcher.input.TouchpadGestures
 import com.droiddeck.launcher.runtime.LinuxRuntime
 import com.droiddeck.launcher.session.LoadingState
@@ -153,6 +154,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
     private var watching = true
     private lateinit var touchpad: TouchpadGestures
+    private lateinit var stylus: StylusInput
     private var touchMode by mutableStateOf(SessionPrefs.TOUCH_AUTO)
     private var cursorPos by mutableStateOf(androidx.compose.ui.geometry.Offset(-100f, -100f))
     private var cursorVisible by mutableStateOf(false)
@@ -379,6 +381,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         onScreenControls = OnScreenControls(this, bridge, onKeyboard = ::togglePcKeyboard).also { root.addView(it) }
         keyboard = KeyboardHost(this).also { root.addView(it) }
         touchpad = TouchpadGestures(PointerGestures.slop(this), pointerListener)
+        // The pen leaving the screen takes our arrow with it; the program keeps the last position.
+        stylus = StylusInput(pointerListener) { uiHandler.removeCallbacks(cursorHide); cursorVisible = false }
         // One arrow, ours: Android draws a system pointer for a mouse over any window, and the
         // session already draws the pointer it is sent.
         val noCursor = android.view.PointerIcon.getSystemIcon(this, android.view.PointerIcon.TYPE_NULL)
@@ -1385,6 +1389,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (pcKeyboardOpen && event.device != null && PadBridge.isFromController(event.device)) return super.dispatchGenericMotionEvent(event)
         if (padBridge?.onMotionEvent(event) == true) return true
         if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE) && !drawerOpen && onMouse(event)) return true
+        // A hovering pen points like a mouse in direct touch; on the touchpad the arrow stays put.
+        if (!drawerOpen && touchMode != SessionPrefs.TOUCH_OFF && !usingTouchpad() && stylus.onHover(event)) return true
         return super.dispatchGenericMotionEvent(event)
     }
 
@@ -1693,6 +1699,10 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             return touchpad.onTouch(event)
         }
         val rect = drawnRect() ?: return false
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && StylusInput.isStylus(event)) {
+            Log.i(TAG, "stylus down: source=0x${Integer.toHexString(event.source)} buttonState=0x${Integer.toHexString(event.buttonState)}")
+        }
+        if (stylus.onTouch(event)) return true
         fun sendTouch(action: Int, index: Int) {
             val x = ((event.getX(index) - rect.left) / rect.width()).coerceIn(0f, 1f)
             val y = ((event.getY(index) - rect.top) / rect.height()).coerceIn(0f, 1f)
